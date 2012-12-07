@@ -1,0 +1,9 @@
+
+    * Easy restore tool (command line/Web GUI)
+    * GUI tool to modify the config.yaml (perhaps using python-gtk)
+    * Desktop panel status monitor for openduckbill
+    * Add better file version support (instead of rsync's backup feature)
+    * Support compression at remote end.
+    * Ability to check backup destination disk space/quota.
+    * Read config during runtime. 
+

@@ -1,0 +1,665 @@
+Openduckbill
+-------------
+
+ Introduction
+ Features
+ Requirements
+ Installation
+   Installing pyinotify
+   Installing PyYAML
+ Using openduckbill - for the impatient
+ Using openduckbill - Getting Started
+   Understanding the Config File
+     The YAML format
+     The Global section
+     The Method Section
+     The LOCAL backup method section
+     The NFS backup method section
+     The RSYNC backup method section
+     The Global Exclude Section
+     The Entry Section
+ Configuring openduckbill
+   Modify the config.yaml file
+   Starting openduckbill
+   Stoping openduckbill
+ Restore files
+ A Note on backup version support
+ Setting up passwordless ssh
+ Logging
+ Debugging
+ Uninstall
+ TODO
+ Troubleshooting
+   install.sh script
+   Configuration file
+   Missing Modules
+   Backup failing
+   Recurring ssh password requests
+ Platforms
+ About
+ Project URL
+ Reference Links
+
+
+Introduction
+-------------
+
+    Openduckbill is a simple command line backup tool which is capable of monitoring the files/directories marked for backups for any changes and transferring these changes either to a local backup directory or a remote NFS exported partition or to a remote ssh server using the very common, rsync command. 
+
+    As a backup tool, openduckbill can operate in any one of the modes mentioned below: 
+
+    * Maintain an exact copy of the source at the backup destination
+          o This is the default property 
+    * Maintain current and previous version of the source at the backup destination
+          o Using the "maintainprevious" option. (See Understanding the Config file) 
+
+    Source - File/directory marked for backup 
+
+    Backup destination - The local/remote backup directory 
+
+Features
+---------
+
+    * Supports recursive and non-recursive backup of files/directories
+    * Does filesystem monitoring
+          o Openduckbill uses pyinotify for filesystem monitoring.
+          o Any directory marked for backup, will be monitored for changes, and the changes will be synced to the backup destination regularly. 
+    * Three different modes of backup. Supports backup to
+          o Local directory
+          o NFS mount
+          o SSH server (using rsync over ssh) 
+    * Include/exclude files/directories from backup
+          o Supports including/excluding files/directories from backup using pattern matches 
+    * Supports maintaining current and previous versions of files at backup destination.
+    * In NFS backup mode, the NFS partition is auto mounted.
+    * Ability to remove files/directories which are not part of backup schedule from backup partition. (Currently this feature supported only in LOCAL and NFS backup modes.)
+    * Uses YAML based config file
+          o Easy to read and modify 
+    * Uses GUI dialog box to display critical information
+    * Has built-in logging system
+    * Daemon mode and Non-daemon mode
+    * Extensive DEBUG info mode 
+    * Fully client side application
+      * Minimal (or no) configuration required on server
+
+
+Requirements
+-------------
+
+    * Linux kernel > 2.6.13
+          o Kernel should have inotify support (grep INOTIFY /boot/config-uname -r) 
+    * Python (>= v 2.4)
+    * Pyinotify (>= v 0.7.1)
+    * PyYAML (>= v 3.05)
+    * Rsync (>= v 2.6.6)
+    * Openssh clients and libraries
+    * mount/umount commands
+    * Root privileges during installation 
+
+Installation
+-------------
+
+    Copy the openduckbill archive into a temporary directory
+
+            $ cp openduckbill-1.0.0.tar.gz /tmp/
+
+    Untar the archive
+
+            $ cd /tmp
+            $ tar -xzvf openduckbill-1.0.0.tar.gz
+            $ cd openduckbill-1.0.0
+
+    Installation is made simple by the bash script install.sh. The script takes an argument, which is the directory where openduckbill needs to be installed.
+
+            $ pwd
+            /tmp/openduckbill-1.0.0
+            $ ./install.sh
+            Usage: install.sh </path/to/install_directory>
+            Example: install.sh /usr/local/openduckbill
+
+    The command needs to be run as root, if openduckbill needs to be installed into a root owned directory.
+
+            $ su -
+            $ cd /tmp/openduckbill-1.0.0
+            $ mkdir /usr/local/openduckbill
+            $ ./install.sh /usr/local/openduckbill
+
+    If the installation was successful, openduckbill can be run from the command line.
+
+            $ openduckbill -h
+            Usage : openduckbill -D (Debug)
+                  : openduckbill -F (Run in foreground - No daemon)
+                  : openduckbill -R (Show resource usage (used with -D))
+                  : openduckbill -c <path to config file>
+                  : openduckbill -n (Don't perform any backup (dry-run))
+                  : openduckbill -h (Show this message)
+
+    The install script would copy the default config.yaml file to ~/.openduckbill/. 
+
+    Openduckbill depends on two other python packages for its functioning. So, to get openduckbill running, these two packages need to be installed, if not already available. (Openduckbill will log errors and abort if any of the packages are missing) 
+
+Installing pyinotify
+---------------------
+
+    Download pyinotify (v 0.7.1 or above) from http://pyinotify.sourceforge.net/. Follow the instructions below:
+
+            $ cp pyinotify-0.7.1.tar.bz2 /tmp ; cd /tmp
+            $ bunzip2 pyinotify-0.7.1.tar.bz2
+            $ tar -xvf pyinotify-0.7.1.tar
+            $ cd pyinotify-0.7.1
+            $ python setup.py build
+            # Run the command below as root user
+            $ python setup.py install
+
+    Install instructions are also mentioned in pyinotify-0.7.1 README. Debian users may want to check apt-cache for a pre-built Debian package (>= v 0.7.1).
+
+            $ apt-cache search pyinotify
+            $ apt-get install pyinotify
+
+Installing PyYAML
+------------------
+
+    Download PyYAML (v 3.05) from http://pyyaml.org/wiki/PyYAML. Follow instructions below:
+
+            $ cp PyYAML-3.05.tar.gz /tmp ; cd /tmp
+            $ tar -xzvf PyYAML-3.05.tar.gz
+            $ cd PyYAML-3.05
+            # Run the command below as root user
+            $ python setup.py install
+
+    Install instructions available in PyYAML-3.05 README. Debian users might want to check the apt repository as well.
+
+            $ apt-cache search yaml
+            # Run the command below as root user
+            $ apt-get install yaml
+
+Using openduckbill - for the impatient
+---------------------------------------
+
+    See section Configuring openduckbill 
+
+Using openduckbill - Getting Started
+-------------------------------------
+
+    Openduckbill is written entirely in python and is a command line tool. There are two modes of operations, daemon (background) mode and non-daemon (foreground) mode. As name suggests when openduckbill is run in daemon mode (command line argument -D), the program forks into background after doing the initial checks and starts doing backup according to the criteria specified in the configuration file. In Non-daemon mode (command line argument -F) the code runs in foreground and prints messages to console. Daemon mode is the default for openduckbill, however it could be run in as non-daemon mode for debugging purposes. In either cases, openduckbill writes log messages to its log file (~/.openduckbill/messages.log) 
+
+    Openduckbill reads its configuration from its config file (config.yaml). By default, openduckbill during its startup, looks for config.yaml in the "present working directory". If it doesn't find the config file, checks whether it exists in ~/.openduckbill/config.yaml. During installation, the install script places config.yaml in ~/.openduckbill/config.yaml. The config file, as the extension suggests is an YAML file. Before starting up openduckbill, you might want to modify config.yaml to suit your needs. More about config.yaml in Understanding the Config File Section. Before starting to use openduckbill, you need to setup the config.yaml to suit your needs. 
+
+Understanding the Config File
+------------------------------
+
+    There are four different sections to the config.yaml file. These are the Global, Method, Exclude and Entry sections. These sections, along with the parameters used and explained below. 
+
+The YAML format
+----------------
+
+    You might probably be familiar with or heard about XML format. Simply put, YAML is a much simpler form of XML, without any XML tags. The config file is represented in free form text and sections can be described by indentation. 
+
+The Global section
+-------------------
+
+    This section defines parameters required for initializing the program, also it indicates the backup method to be used for performing backup of data.
+
+            global :
+             backupmethod : LOCAL
+             syncinterval : 300
+             commitchanges : 64
+             maintainprevious : no
+             retainbackup : yes
+             retentiontime : 604800
+
+    The global section starts with the keyword "global". All parameters belonging to global section are defined below it as indicated. Be aware, that indentation plays important role in a YAML file. 
+
+    * backupmethod (Required parameter) : LOCAL | NFS | RSYNC (Default : LOCAL) 
+
+    This parameter describes the backup method to be used for performing the actual data backup. Possible options are LOCAL, NFS or RSYNC. If LOCAL is specified, the data is backed up to a local directory specified in "method" section (described below) of the config.yaml. If NFS is specified, data is backed up to a locally mounted NFS exported mount. If RSYNC is specified, then the data is transferred to a remote ssh server using rsync (over ssh). You can select only one type of "backupmethod" at any time. When "RSYNC" is chosen as the "backupmethod", the remote server should have same or higher version of ssh/rsync. 
+
+    * syncinterval (Optional parameter) : Number (Default : 300) 
+
+    Openduckbill checks every "syncinterval" seconds whether any files or directory contents marked for backup has been modified. If there are pending changes, then these are synced to the backup destination (LOCAL, NFS or RSYNC). This is an optional parameter and a default value (300 seconds) is assigned during initialization, if not specified in config.yaml. 
+
+    * commitchanges (Optional parameter) : Number (Default : 64) 
+
+    This is another criteria depending on which openduckbill syncs data to the backup destination. As mentioned above, openduckbill checks every "syncinterval" seconds whether there are any changes in the filesystem that needs to be synced to the backup destination. However, before performing the sync, openduckbill checks whether the number of modifications (filesystem events) is greater than "commitchanges" value. Sometimes, there might not be enough changes to sync and it would be nice to collect all changes and perform the sync. "commitchanges" value is by default set as 64 and can be any value above 5. The value for "commitchanges" usually depends on the filesystem activity. If there is low filesystem activity on files/directories marked for backup, perhaps the default value is fine. Each filesystem event is counted by openduckbill, for example, when you write to a file, there are some filesystem events like, OPEN, MODIFY, CLOSE etc. All such changes are considered by openduckbill. You may safely leave the value at the default. 
+
+    Also note that when openduckbill notices that there are some changes made, but not greater than "commitchanges" and there is no further filesystem activity for long time, then all pending changes will be synced to backup destination. 
+
+    * maintainprevious (Optional parameter) : yes | no (Default : no) 
+
+    By default, openduckbill maintains an exact copy of the files/directories marked for backup at the backup destination. Whenever there is a change made in the source (file/directory to be backed up), openduckbill syncs the change to the backup destination, depending on the "syncinterval". Which means that when a file is deleted from the source, after the sync it will be removed from the backup destination as well (exact copy of source). This parameter "maintainprevious" tells openduckbill to keep a copy of the old file in the backup destination, before syncing the change to the backup directory. Or, in other words, when changes are synced to the backup destination, openduckbill will maintain the current as well as previous version of the file. Remember that this will increase the disk usage at the backup destination, since openduckbill will maintain the modified as well as older version of the file in backup destination. The old file is copied and maintained with a file extension .odb~. If "maintainprevious" was enabled (maintainprevious : yes) earlier, it will result in creation of ".odb~" files at the backup destination. Now, if "maintainprevious" is disabled (maintainprevious : no), then during the sync all ".odb~" files will be removed. Enabling this parameter will also disable "retainbackup" mentioned below. 
+
+    * retainbackup (Optional parameter) : yes | no (Default : yes) 
+
+    This parameter represents another interesting feature of openduckbill. Openduckbill is capable of removing old files, which are no longer part of any backup schedule. For this to happen, the parameter "retainbackup" needs to be made "no". By default "retainbackup" is "yes", which tells openducbill to ignore files which don't belong to backup schedules. However, if "retainbackup" is "no", then openduckbill checks for files/directories not part of the backup schedule and removes them if they are older than "retentiontime" seconds. "retentiontime" is explained below. Currently, deleting old files are supported only on backup methods LOCAL and NFS. This is also disabled, if "maintainprevious" is set to "yes". The reason being, "maintainprevious" creates additional backup files, which are not present in source directories, thus making these backup files, candidates for deletion. 
+
+    * retentiontime (Optional parameter) : Number (Default : 604800) 
+
+    Used by openduckbill to verify the age of a file/directory marked for deletion. When "retainbackup" is "no", openduckbill looks for files/directories not part of the backup schedule, and removes any file, directory which is older than "retentiontime" seconds. The default value is 604800, which is equivalent to 7 days. Openduckbill checks the age of the files/directories, once in a while (a multiple of "syncinterval" seconds) 
+
+The Method Section
+-------------------
+
+    The method section describes the type of backup method which will be used by openduckbill to transfer the data to the backup destination. As mentioned earlier, we have three different methods available. These are one of LOCAL, NFS or RSYNC. The "method" section is defined below the "global" section. You might find that the default config file installed will have all three backup method sections defined. However, only one will be used by openduckbill. And this one particular method section is chosen depending upon the value indicated against parameter "backupmethod" in the "global" section. Assuming you defined "backupmethod : LOCAL", openduckbill will simply look for the method section named "LOCAL" and read in the parameters of that section. Other defined backup method sections are simply ignored. 
+
+The LOCAL backup method section
+--------------------------------
+
+    As name suggests, this "method" section is chosen when "backupmethod" is defined as "LOCAL". Do take care of the indentation while modifying the contents of the config file. LOCAL backup can be used in situations, where you have lots of disk space or have an huge external hard disk attached to you Linux workstation/laptop/box, and would like to dump data in there.
+
+            LOCAL :
+             localmount : "/backup/odb_backup"
+
+    * localmount (Required parameter) : Directory (Default : None) 
+
+    This parameter is used by openduckbill as a backup path. More clearly explained, this directory would be used by openduckbill as the root of its backup destination. Make sure that the user executing openduckbill has permissions to write to this directory. This directory should be created before starting openduckbill, else it will log error messages and exit. 
+
+The NFS backup method section
+------------------------------
+
+    This "method" section is selected when "backupmethod" is defined as "NFS". In this scenario, openduckbill mounts the NFS export (remotemount) from the NFS server (server) on the local Linux machine at a mount point (localmount). Use this backup method, when you have an NFS server configured where you can dump your backup. Make sure user process owning openduckbill has permissions to write to the NFS export.
+
+            NFS :
+             server : "server1.mydomain.com"
+             remotemount : "/backup/odb_server1"
+             localmount : "/mnt/odb_mount"
+             nfsmountoptions : "rw,nosuid,soft"
+
+    * server (Required parameter) : Hostname (Default : None) 
+
+    Indicates the hostname of the NFS server, which will be providing the NFS export for dumping data backup. Could be an IP address as well. 
+
+    * remotemount (Required parameter) : Directory (Default : None) 
+
+    The path to the NFS partition exported by the NFS server defined in parameter "server". You can find out the exported path by using running the command showmount -e server from command line. Replace "server" with the your NFS server name. 
+
+    * localmount (Required parameter) : Directory (Default : None) 
+
+    The directory path where openduckbill will try to mount the remote NFS partition. This directory should be created before running openduckbill and user process owning openduckbill should have necessary permissions. 
+
+    * nfsmountoptions (Optional parameter) : Comma separated strings (Default : None) 
+
+    This parameter represents the NFS options that to be used when mounting. This parameter is optional and can be ignored in config.yaml. If there are any options, those can be mentioned in /etc/fstab also. See below. 
+
+    Openduckbill tries to mount the remote NFS mount locally using the mount command and for mounting partitions, the user needs to have root privileges. So when running openduckbill as a regular user, you need to have a special entry in /etc/fstab file. This entry should be
+
+            `server:remotemount localmount  nfs  nfsmountoptions,user,auto  0 0`
+
+    This will enable a regular user to run the mount command. If you fail to add this entry to /etc/fstab, openduckbill won't be able to mount the NFS partition, and the NFS partition would have to be manually mounted as root user every time, before running openduckbill. Make sure to provide the same values that you specify in the NFS method section mentioned above. Do not forget to add mount options "user,auto", since those options let a regular user to mount the NFS partition locally. 
+
+The RSYNC backup method section
+--------------------------------
+
+    This is the third type of backup method supported by openduckbill. Openduckbill reads in parameters and their values from this section, if the global parameter "backupmethod" is defined as "RSYNC". In this case, duckbill uses the rsync command on the local machine to transfer backup data to remote server. The remote server should have sshd enabled. Openduckbill is designed to use rsync over ssh. Thus openduckbill ensures that data transfer across boxes are encrypted using "ssh", and also uses the powerful rsync for effectively copying data. Most useful, when you can't reach a remote server through NFS.
+
+            RSYNC :
+             server : "server2.mydomain.com"
+             sshport : 22
+             remotemount : "/backup/odb_server2"
+
+    * server (Required parameter) : Hostname (Default : None) 
+
+    Represents the hostname that runs sshd daemon. The user owning the process should have ssh login access to the server defined here. 
+
+    * remotemount (Required parameter) : Directory (Default : None) 
+
+    The directory on the remote ssh server, where openduckbill will try to dump the backup data. Make sure the user running openduckbill has login permissions as well as write access on the "remotemount" location. 
+
+    * sshport (Optional parameter) : Number (Default : 22) 
+
+    If the remote server is running sshd on a non standard port, use this option to tell openduckbill to use a different port than the standard one (which is, 22) 
+
+    * sshuser (Optional parameter) : username (Default : None) 
+
+    Sometimes, the user executing openduckbill might not have login access to the remote ssh server, but might have access as a different user. Define the parameter "sshuser" to make openduckbill use a different ssh login, than the user running openduckbill. 
+
+    Also read access control section to see how to configure passwordless ssh login (required) and also add access restrictions (recommended) in such a scenario. 
+
+The Global Exclude Section
+---------------------------
+
+    Openduckbill can recursively or non-recursievley back up whole directories. However sometimes, not all files need to be copied. For example if files with extention ".doc" need not be sent to the backup destination (using LOCAL, NFS or RSYNC). In such a case, all that is need to be done is add the pattern (regex) to the global exclude section.
+
+            exclude :
+             - "*.mp3"
+             - "*.mp4"
+             - "*.jpg"
+             - "*.jpeg"
+             - "*.png"
+             - "*.gif"
+             - "*.log*"
+
+    As shown, the exclude section starts with the keyword "exclude". Declare the patterns that need to be exlcuded as shown above. Do not forget to add the "-" and also the indendation. Remember that this declaration is global and any files/directories matching the pattern will not be considered for backup. Add only one pattern per line. The next section, which is entry section describes how to include certain files even if already defined in the global exclude section. 
+
+The Entry Section
+------------------
+
+    Finally the entry section, which is where the declaration of what really needs to be backed up is done. The entry section begins with the keyword "entry" as shown below. At least one entry needs to be defined for openduckbill to function. Openduckbill does a bit of sanity checking while doing initialization. Openduckbill makes sure that the file/directory path defined exists, that no two entries have been defined with same path for back up, that an entry path is not part of an already recursively backed up entry etc.
+
+            entry :
+             - name : home_backup
+               path : "~/"
+               recursive : no
+               include :
+                - "*.log*"
+             - name : docs_backup
+               path : "~/Documents"
+               recursive : yes
+               exclude :
+                - "*~"
+
+    Each entry is made up of a few pieces of information. These are desribed below. 
+
+    * name (Required parameter) : Entry name identifier (Default : None) 
+
+    This is an identifier for the path being backed up. This could be a any string which could be used to describe something about what is being backed up. For example, if /var/log is being backed up, then the name could be "var_log_backup". There is no rule about defining name for the entry. But keep it short and easily identifiable. Multiple entries can have same name. But keep it different for easily identifying entries. 
+
+    * path (Required parameter) : File/directory path (Default : None) 
+
+    The file/directory to be backed up. This should be an existing valid filesystem path. Openduckbill checks the path during startup and will log message if not found. If there are multiple entries defined and openduckbill finds that the path defined for one of the entry is invalid (say path not found), then that entry is simply ignored and openduckbill will continue with entries which have valid paths. An error message is logged. Absolute paths are always preferred for parameter "path", however relative paths with respective to home directory (~/) are also supported. No two entries can have same path. If an entry has a path defined which is a subdirectory of another entry whose path is being recursively backed up, then openduckbill will complain. Define path within double quotes. 
+
+    * recursive (Optional parameter) : yes | no (Default : no) 
+
+    This parameter tells openduckbill whether to backup the directory path mentioned in "path" parameter needs to be backed up recursively or not. If not mentioned, openduckbill assumes that "path" has to backed up non-recursively. Has no effect on files. 
+
+    * exclude (Optional parameter) : Entry specific exclude pattern (Default : None) 
+
+    Declare pattern (regex) of file/directories that need to be excluded from "path" being backed up. Has same format as the global exclude section. One pattern per line, each line starting with an "-". 
+
+    * include (Optional parameter) : Entry specific include pattern (Default : None) 
+
+    Declare pattern of files/directory which needs to be included when openduckbill does backup of "path". Useful when files/directory pattern are defined in global exclude section and the same is required to be backed up from a specific entry. 
+
+Configuring openduckbill
+-------------------------
+
+Modify the config.yaml file
+----------------------------
+
+    * Open the config.yaml (~/.openduckbill/config.yaml) file using your favorite editor
+    * Choose the backup method from one of these: LOCAL, NFS or RSYNC
+    * If you chose LOCAL, then make sure you have the "method" section named LOCAL. For example:
+
+              LOCAL :
+               localmount : "/backup/odb_backup"
+
+    If you chose NFS, then a method section named "NFS" should be available in config.yaml. For example:
+
+            NFS :
+             server : "server1.mydomain.com"
+             remotemount : "/backup/odb_server1"
+             localmount : "/mnt/odb_mount"
+             nfsmountoptions : "rw,nosuid,soft"
+
+    If RSYNC is selected as backup method, "method" section "RSYNC" need to available. For example:
+
+            RSYNC :
+             server : "server2.mydomain.com"
+             sshport : 22
+             remotemount : "/backup/odb_server2"
+
+    * Modify the syncinterval or leave it with the default value.
+    * Choose value of "maintainprevious" as "yes", if current and previous version of the files need to be maintained at the backup location. (See notes in "global" section of config.yaml)
+    * Add entries to the "global exclude" section,as required. One entry per line.
+    * Add at least one entry to the "entry" section of config.yaml. For example:
+
+              entry
+               - name : docs_backup
+                 path : "~/Documents"
+                 recursive : yes
+                 exclude :
+                  - "*~"
+
+    * Save the modified config.yaml 
+
+Starting openduckbill
+----------------------
+
+    Openduckbill supports multiple command line options. use the "-h" command line option to see the supported options.
+
+            openduckbill -h
+            Usage : openduckbill -D (Debug)
+                  : openduckbill -F (Run in foreground - No daemon)
+                  : openduckbill -R (Show resource usage (used with -D))
+                  : openduckbill -c <path to config file>
+                  : openduckbill -n (Don't perform any backup (dry-run))
+                  : openduckbill -h (Show this message)
+
+    To start openduckbill, run the following command:
+
+            openduckbill -D 
+
+    This will start openduckbill in the debug mode. While the initialization happens, openduckbill will print messages to the console and once all is done and fine, it forks to the background and starts doing the filesytem monitoring, backup at regular intervals. All the while, openduckbill prints messages to the log file, which is ~/.openduckbill/messages.log.
+
+            $ openduckbill -D -c ~/odbconf/config.yaml.local 
+            [2008-02-17 13:13:40,563] openduckbill: DEBUG   : ==> Enabling Debug mode
+            [2008-02-17 13:13:41,050] openduckbill: WARNING : Invalid or no "recursive" key value defined for entry: home_docs_backup
+            [2008-02-17 13:13:41,050] openduckbill: WARNING : Assuming "recursive" key to be "no"
+            [2008-02-17 13:13:41,105] openduckbill: WARNING : Please wait while home_code_backup is being backed up
+            [2008-02-17 13:14:19,976] openduckbill: WARNING : Please wait while home_docs_backup is being backed up
+            [2008-02-17 13:16:05,651] openduckbill: WARNING : Please wait while var_run_backup is being backed up
+            [2008-02-17 13:16:05,836] openduckbill: ERROR   : Backup of entry var_run_backup failed. Error code: 23
+            [2008-02-17 13:16:05,837] openduckbill: WARNING : Forking to background. Logs in /home/odbuser/.openduckbill/messages.log
+
+    If you do not need openduckbill to be run in background mode, use the "-F" flag which will tell openduckbill to run in the foreground and print all messages to the console (in addition to the log file.)
+
+            openduckbill -D -F
+
+    If the config file is placed in some non standard location use the "-c" flag to tell openduckbill where the config file is.
+
+            openduckbill -D -c ~/.openduckbill/config.yaml.old
+
+    NOTE: openduckbill needs to be started everytime the local machine comes back from a restart. 
+
+Stoping openduckbill
+---------------------
+
+    Openduckbill can be stopped by issuing a kill command. To perform a graceful stop, issue command shown below. This will do a graceful kill, allowing the application to sync any pending changes.
+
+            ps -ef | grep openduckbill
+                    or
+            grep PID ~/.openduckbill/messages.log 
+            [2008-02-17 13:16:05,837] openduckbill: INFO    : PID: 5244, PPID 5243
+            kill <pid of openduckbill>
+
+    Below command can be used for a force kill. Openduckbill will exit immediately and will not sync pending changes to backup destination.
+
+            kill -9 <pid of openduckbill>
+
+    Hit Ctrl-c to stop if running from a terminal if openduckbill is running in foregroun mode. 
+
+Restore files
+--------------
+
+    Currently, there is no easy command line option available to restore the data, and has to be done manually. Whenever openduckbill starts doing backup, it creates a particular directory path in the backup destination. For backup methods LOCAL, NFS, the parameter "localmount" or "remotemount" defined in config.yaml is the backup destination. "localmount" would be the path on the local machine and "remotemount" would be the path in the remote machine. And for backup method RSYNC, this would be "remotemount". Assuming the backup method is LOCAL and localmount is "/tmp/odb", openduckbill creates a path inside "/tmp/odb" as
+
+            /tmp/odb/<username>/__backups__/<hostname>
+
+    For example:
+
+            /tmp/odb/odbuser/__backups__/odbclient1/
+
+    All files/directories being backed up are placed with a relative path inside this "global" path mentioned above. So if "odbuser" tells openduckbill to backup "/home/odbuser/Documents", "/home/odbuser/Projects" and /var/log/, The files would be placed in as shown below:
+
+            /tmp/odb/odbuser/__backups__/odbclient1/home/odbuser/Documents/...
+            /tmp/odb/odbuser/__backups__/odbclient1/home/odbuser/Projects/...
+            /tmp/odb/odbuser/__backups__/odbclient1/var/log/...
+
+    Now, to restore files, all that needs to be done is change to the desired directory and copy the necessary files to the restore destination. For example:
+
+            $ cd /tmp/odb/odbuser/__backups__/odbclient1/home/odbuser/Documents/
+            $ ls
+            001680301.jpg  temp.doc  file.xls
+            $ cp temp.doc /tmp/
+
+    Easy restore is in the TODO list. :-) 
+
+A Note on backup version support
+---------------------------------
+
+    Openduckbill always tries to maintain an exact copy of data marked for backup. There is no true (see below paragraph) version support built into openduckbill (is another TODO). So if data has changed at source and this needs to be recovered from openduckbill backup destination, it is not possible to get the old file, if openduckbill has already synced the changes to the backup destination. This can happen, when "syncinterval" is low and by the time, the files are checked out from the backup destination, it might already have been overwritten with a new copy by openduckbill. In such a scenario, openduckbill "syncinterval" could be increased to a higher value like say 1 hour (3600 seconds). Adjust the "commitchanges" value depending on the filesystem activity (Default should be still fine). Another means to enable version support in openduckbill is by enabling the parameter "maintainprevious". Once enabled, openduckbill will also keep a copy of the old file in the backup destination, in addition to the new modified file. The old file is kept with a file extention ".odb~". This parameter thus brings current and previous file version support to openduckbill. Enabling this option, will also increase disk usage considerably at the remote backup destination. Have a look at the notes on "maintainprevious" in Understanding the config file. 
+
+Setting up passwordless ssh
+----------------------------
+
+    This is required when openduckbill operates in "backupmethod", RSYNC. 
+
+    * http://code.google.com/p/openduckbill/wiki/OpenduckbillAccessControl 
+      - or - 
+    * README.access
+
+Logging
+--------
+
+    Openduckbill has extensive logging capabilities. All log messages are printed in ~/.openduckbill/messages.log 
+
+Debugging
+----------
+
+    Openduckbill can be run either in DEBUG mode or NO-DEBUG mode. Use the command line argument "-D" to start openduckbill in DEBUG mode. If no flags are passed to openduckbill, it starts in NO-DEBUG mode. Debug mode is useful, if openduckbill hits any issues, and troubleshooting is required.
+
+            openduckbill -D
+            openduckbill -D -F
+
+    Openduckbill prints debug messages to the console as well as the log file (~/.openduckbill/messages.log). 
+
+Uninstall
+----------
+
+    For uninstalling, all that needs to be done is remove the directory which holds the openduckbill python code. Assuming it was installed in /usr/local/openduckbill
+
+            $ ps -ef | grep openduckbill
+            $ kill -9 <pid of openduckbill>
+            $ rm -rvi /usr/local/openduckbill/
+
+    The config and log files are in ~/.openduckbill/, which can be removed. 
+
+TODO
+-----
+
+    * Easy restore tool (command line/Web GUI)
+    * GUI tool to modify the config.yaml (perhaps using python-gtk)
+    * Desktop panel status monitor for openduckbill
+    * Add better file version support (instead of rsync's backup feature)
+    * Support compression at remote end.
+    * Ability to check backup destination disk space/quota.
+    * Read config during runtime. 
+
+Troubleshooting
+----------------
+
+install.sh script
+------------------
+
+    * Cannot find installation directory
+
+          Installation directory needs to be created before running the install script. 
+
+    * Permission - Installation directory
+
+          Check if installation directory is owned by the user running the script. Try running the script as root, if the directory is owned by root. 
+
+    * Permission - Symlink /usr/bin/openduckbill
+
+          Script needs to be run as root user for creating link. Or else use the sudo command to run the symlink command (this will be displayed at the console by the install.sh script) 
+
+    * Script fails due to reasons not mentioned here. 
+
+    The install script performs following functions
+
+        * copy ./src/*.py <installation directory>
+        * chmod 755 <installation directory>/openduckbilld.py
+        * copy ./conf/config.yaml ~/.openduckbill/config.yaml
+        * symlink <installation directory>/openduckbilld.py to /usr/bin/openduckbill 
+
+    Manually perform the above steps to get openduckbill installed. 
+
+Configuration file
+-------------------
+
+    * Config file errors
+
+              [2008-02-20 13:57:40,391] openduckbill: ERROR   : Error in configuration file: config.yaml.rsync, while parsing a block mapping
+              in "config.yaml", line 2, column 1
+              expected <block end>, but found '<block mapping start>'
+              in "config.yaml", line 8, column 2
+
+    These are most likely to be signs of indentation problems. YAML requires that spaces and formatting be taken care strictly. So if the openduckbill complaints about formatting error, verify that there are no stray spaces, unclosed quotes etc anywhere. 
+
+    * openduckbill not behaving as it should 
+
+    Boolean parameters should have values with no double qoutes. 
+
+    This is correct:
+
+            retainbackup : yes
+
+    This is incorrect:
+
+            retainbackup : "yes"
+
+Missing Modules
+----------------
+
+    * Pyinotify 
+
+    Message below indicates that pyinotify is not available system or python path
+
+            Error: No module named pyinotify
+            Please install pyinotify for inotify support
+            http://pyinotify.sourceforge.net/
+            Quitting!
+
+    Follow pyinotify install steps in Installation section 
+
+    * PyYAML 
+
+    Message below indicates that PyYAML is not available system or python path
+
+            Error: No module named yaml
+            Please install PyYaml for YAML support
+            http://pyyaml.org/wiki/PyYAML
+            Quitting!
+
+    Follow PyYAML install steps in Installation section 
+
+Backup failing
+---------------
+
+    * Openduckbill shows error messages in logs:
+
+              [2008-02-17 11:32:29,153] openduckbill: ERROR   : Backup of entry var_run_backup failed. Error code: 23
+
+    Check the log file ~/.openduckbill/messages.log. Look for rsync error messages. This could be because of permission issues at source or destination. 
+
+    In backup method RSYNC, if access controls were set on the remote end, before completing at least one successful backup using openduckbill, then opendukcbill might not have created the remote backup directory. This results in rysnc throwing error messages because of the missing destination. Remove access controls, run openduckbill to complete a successful backup, put the access controls back in place. 
+
+Recurring ssh password requests
+--------------------------------
+
+    If you find openduckbill waiting at password prompt, when backup method is selected as RSYNC. The please refer Setting up passwordless ssh 
+
+Add more to this section
+
+Platforms
+----------
+
+    Openduckbill has been tested to work on x86 Linux (Fedora 6, Ubuntu Dapper/Gutsy). 
+
+About
+------
+
+    Author : Anoop Chandran <anoopj@google.com> 
+    Copyright (C) 2008 Google Inc. 
+
+Project URL
+-----------
+
+    http://code.google.com/p/openduckbill/
+
+Reference Links
+----------------
+
+    * http://rsync.samba.org/
+    * http://www.samba.org/rsync/FAQ.html
+    * http://pyinotify.sourceforge.net/
+    * http://pyyaml.org/wiki/PyYAML 

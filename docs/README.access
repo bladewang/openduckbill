@@ -1,0 +1,93 @@
+
+Setting up passwordless ssh login when backup method is RSYNC (over ssh)
+-------------------------------------------------------------------------
+
+    Openduckbill runs in background as a daemon program and is designed to transfer backup data, whenever it finds that some change has been made to the files/directories marked for backup. When the "backupmethod" is selected as RSYNC, openduckbill uses rsync to communicate with the remote ssh server, where it dumps the backup data to a directory specified (remotemount) in config.yaml. However, this kind of backup presents a new hurdle - Openduckbill will need the password of the remote user every time it wants to dump some data. This is rather painful, if the user running openduckbill has to supply his/her password every time. So now, passwordless ssh access needs to be setup which will eliminate the need for the user to supply password when data transfer to remote server is required. So here we setup passwordless ssh using public/private keys. The assumption here is that, the user has a home directory in the remote ssh server, where he/she can place the public key. There are excellent resources out there in the web which mentions how to make this work. But in a nutshell, this is what needs to be done. 
+
+    * From your terminal run the command
+
+              ssh-keygen -t rsa
+
+    Press enter key two times, so that the we have a passwordless key 
+
+    * Now, the public key needs to be copied to the remote server
+
+              ssh-copy-id -i ~/.ssh/id_rsa.pub server
+
+    Replace "server" with the remote server hostname, specified in config.yaml. This will copy the public key to the user home directory in the remote server. This can be checked by looking at the ~/.ssh/ directory in server. The file ~/.ssh/authorized_keys will contain your public key. 
+
+    Now passwordless login to the "server" is enabled. Remember that passwordless ssh login is allowed only from the box the ssh-key was generated to the remote server. Reverse connection is not possible and is not required for openduckbill to work in RSYNC backup method. Also note that password is required when accessing the server from any other machine. 
+
+    NOTE: Do understand that if someone takes control of the user account on the local box (or has access to your ssh keys), it would now be possible to login to the remote server without password. There are means of restricting access to the remote server, by adding extra options in server:~/.ssh/authorized_keys. For example, its possible to configure the ssh on the remote server to run only specific commands. A simple setup to restrict the server to run only rsync commands (from client machine running openduckbill) is described below. If you have reservations in using passwordless ssh, it is then recommended to use NFS backup method. 
+
+Making stricter access controls on server (Optional but recommended)
+-------------------------------------------------------------------------
+
+    Tune permissions on the remote side only after openduckbill has started properly and completed the first successful backup. This is necessary since, openduckbill requires to set up a backup path, before starting the actual backup process (using rsync) 
+
+    Some assumptions: 
+
+    * Client (box running openduckbill) hostname : odbclient
+    * Client IP address : 192.168.1.1
+    * Client user running openduckbill : odbuser
+    * Server (where openduckbill will dump data) : odbserver
+    * Server username (user having access in server) : odbuser (assumes that odbuser has access on odbserver)
+    * IMPORTANT: Assumes that "odbuser" has login access to "odbserver" by other network access method as well (like, ssh access from other hosts, or may be physical access). This section merely takes some steps which will secure the access control between the openduckbill client and the ssh server. This step will also block the ssh login access from "odbuser@odbclient" to "odbuser@odbserver". This kind of setup is useful when you want to run openduckbill as root user and thus will enable only the rsync command to be run, and it won't be possible to access the server as root.
+    * The public key of "odbuser" has been placed in odbserver:/home/odbuser/.ssh/authorized_keys
+    * IMPORTANT: Open two different ssh sessions on to the server. At the end of these steps, odbuser won't be able to ssh login to odbserver. (Yikes!)
+    * Now ssh login to the server, and change directory ~/.ssh/
+
+              ssh odbuser@odbserver
+              cd /home/odbuser/.ssh/
+
+    * open file authorized_keys using an editor. The ssh-key line for odbuser@odbclient could be like
+
+              ssh-rsa AXAAB3NzaC1yc2EAAAABIwA.. <snip> ...ixQWyLEukeL+/Kww== odbuser@odbclient
+
+    Add the following options, in front of this key. Leave a space between the command and the key
+
+            from="192.168.1.1",command="/home/odbuser/.ssh/run-command" ssh-rsa AXAAB3NzaC1yc2EAAAABIwA...ixQWyLEukeL+/Kww== odbuser@odbclient
+
+    This step will tell ssh to run the command /home/odbuser/.ssh/run-command when odbuser login from "192.168.1.1". The "from" key is optional. When odbserver finds that login request is from some different IP address, the user is prompted for password. If odbclient has dhcp enabled, the "from" keyword can be ignored. 
+
+    * Create a shell script /home/odbuser/.ssh/run-command which is
+
+              #!/bin/bash
+
+              case "$SSH_ORIGINAL_COMMAND" in
+                rsync\ --server*)
+                  # Don't print out anything from the script, since that would break rsync.
+                  $SSH_ORIGINAL_COMMAND
+                  ;;
+                *)
+                  echo "Access restricted"
+                  ;;
+              esac 
+
+    The variable SSH_ORIGINAL_COMMAND is the command that is going to be executed in the server. In this script, we check if the command is an rsync --server command, which is used by openduckbill to transfer data. If it matches the "case", the command is executed else the connection is disconnected. Enabling this script will also block ssh login access from odbuser@odbclient. 
+
+    * Make sure following are the permissions
+
+          /home/odbuser/.ssh/                 -> drwx------ [0700]
+          /home/odbuser/.ssh/authorized_keys  -> -rw------- [0600]
+          /home/odbuser/.ssh/run-command      -> -r-x------ [0500]
+
+    * Try running openduckbill and ensure that rsync copies data and does not disconnect. If there are any issues in connecting to the remote server, the most probable error message that rsync would print out are:
+
+              protocol version mismatch -- is your shell clean?
+              (see the rsync man page for an explanation)      
+
+    This is an indication that rsync cannot connect to the remote end properly. If more simpler/complex settings are required, then have a look at the "Reference" section 
+
+    * This kind of strict setting can be used if openduckbill is being run from servers as root user and passwordless ssh has been setup. This makes sure that the root user can only perform backup, not login to the remote ssh server where openduckbill dumps data. 
+
+    Check reference section for more links on how to setup "passwordless ssh", restricting access while using passwordless ssh etc. 
+
+Reference Links
+----------------
+
+    * Using Rsync and SSH: http://troy.jdmz.net/rsync/index.html
+    * rsync Tips & Tricks: http://sial.org/howto/rsync/
+    * Shortest passwordless ssh tutorial, ever : http://blogs.translucentcode.org/mick/archives/000230.html
+    * http://freebsd.peon.net/quickies/21/ 
+
