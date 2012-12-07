@@ -1,4 +1,4 @@
-#!/usr/bin/python2.4
+#!/usr/bin/python
 
 # Copyright 2008 Google Inc.
 # Author : Anoop Chandran <anoopj@google.com>
@@ -334,10 +334,10 @@ class OpenDuckbillMain(init.InitData):
 
     avail_events = pyinotify.EventsCodes
     # Events to be monitored.
-    eventsmonitored = (avail_events.IN_CLOSE_WRITE | avail_events.IN_CREATE |
-                       avail_events.IN_DELETE | avail_events.IN_MODIFY |
-                       avail_events.IN_MOVED_FROM | avail_events.IN_MOVED_TO |
-                       avail_events.IN_ATTRIB | avail_events.IN_MOVE_SELF)
+    eventsmonitored = (avail_events.OP_FLAGS['IN_CLOSE_WRITE'] | avail_events.OP_FLAGS['IN_CREATE'] |
+                       avail_events.OP_FLAGS['IN_DELETE'] | avail_events.OP_FLAGS['IN_MODIFY'] |
+                       avail_events.OP_FLAGS['IN_MOVED_FROM'] | avail_events.OP_FLAGS['IN_MOVED_TO'] |
+                       avail_events.OP_FLAGS['IN_ATTRIB'] | avail_events.OP_FLAGS['IN_MOVE_SELF'])
     # Start a event watcher
     event_watcher = pyinotify.WatchManager()
     # Create a event processor
